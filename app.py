@@ -14,7 +14,7 @@ import fitz  # PyMuPDF
 # Configuration
 # =========================================================
 st.set_page_config(
-    page_title="CyberShield AI",
+    page_title="CyberShield & Legal AI",
     page_icon="🛡️",
     layout="wide",
 )
@@ -22,21 +22,21 @@ st.set_page_config(
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 
-# Resolve path relative to where app.py is located
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOCAL_PDF_PATH = os.path.join(BASE_DIR, "PECA_2016.pdf")
+
+# List of embedded legal documents to load into the vector index
+INTERNAL_PDF_FILES = ["PECA_2016.pdf", "PPC_1860.pdf"]
 
 NOT_FOUND_RESPONSE = (
-    "Sorry, this information is not found in the uploaded legal document."
+    "Sorry, this information is not found in the referenced legal documents (PECA / PPC)."
 )
 
 OUT_OF_SCOPE_RESPONSE = (
-    "This question is outside the scope of CyberShield AI. "
-    "Please ask a question related to cyber safety, cybercrime, "
-    "online harassment, digital offences, or the PECA cyber-law document."
+    "This question appears outside the scope of CyberShield & Legal AI. "
+    "Please ask a question related to cyber safety, criminal offences under PPC, "
+    "online harassment, or Pakistani legal statutes."
 )
 
-# Appended at the very end of every assistant response
 FOOTER_INFO = """
 
 ---
@@ -45,11 +45,14 @@ FOOTER_INFO = """
   * **Helpline**: Call **1799** (24/7)
   * **Online Portal**: [complaint.nccia.gov.pk](https://complaint.nccia.gov.pk)
   * **Email**: `helpdesk@nccia.gov.pk`
-* **Evidence Preservation**: Save unedited screenshots, profile URLs, chat logs, and timestamps before blocking or deleting messages.
-* **Immediate Physical Danger**: If you feel physically unsafe, call **15** (Police) or **1122** immediately.
+* **Police & Rescue Emergencies**:
+  * **Police Emergency**: Call **15**
+  * **Ambulance / Rescue**: Call **1122**
+* **Evidence Preservation**: Save unedited screenshots, URLs, chat logs, and timestamps before deleting messages.
 """
 
-CYBER_KEYWORDS = {
+# Broadened keyword scope covering PECA + PPC criminal offenses
+LEGAL_KEYWORDS = {
     "cyber", "online", "internet", "social media", "facebook", "instagram",
     "whatsapp", "tiktok", "email", "account", "password", "hacking",
     "hack", "phishing", "fraud", "scam", "blackmail", "harassment",
@@ -57,9 +60,11 @@ CYBER_KEYWORDS = {
     "threatening", "extortion", "impersonation", "privacy", "data",
     "identity", "identity theft", "malware", "virus", "ransomware",
     "doxxing", "fake account", "deepfake", "photo", "video", "defamation",
-    "crime", "criminal", "evidence", "report", "complaint", "peca",
+    "crime", "criminal", "evidence", "report", "complaint", "peca", "ppc",
     "electronic", "digital", "device", "computer", "mobile", "website",
-    "abuse", "blackmailing", "online safety"
+    "abuse", "blackmailing", "online safety", "rape", "assault", "murder",
+    "hurt", "kidnap", "abduction", "theft", "dacoity", "police", "section",
+    "punishment", "imprisonment", "fine", "law", "legal", "offence"
 }
 
 
@@ -78,13 +83,13 @@ def get_groq_api_key() -> str:
     return key
 
 
-def is_cyber_question(question: str) -> bool:
+def is_legal_or_cyber_question(question: str) -> bool:
     q = question.lower().strip()
 
     if not q:
         return False
 
-    if any(keyword in q for keyword in CYBER_KEYWORDS):
+    if any(keyword in q for keyword in LEGAL_KEYWORDS):
         return True
 
     patterns = [
@@ -98,6 +103,8 @@ def is_cyber_question(question: str) -> bool:
         r"\bsomeone\s+.*\bmessage",
         r"\bsomeone\s+.*\bphoto",
         r"\bsomeone\s+.*\bvideo",
+        r"\bsomeone\s+.*\bhurt",
+        r"\bwhat\s+should\s+i\s+do\b"
     ]
 
     return any(re.search(pattern, q) for pattern in patterns)
@@ -132,27 +139,32 @@ def chunk_text(text: str, chunk_size: int = 900, overlap: int = 150) -> List[str
     return chunks
 
 
-def extract_pdf_documents_from_filepath(file_path: str) -> List[Dict]:
-    if not os.path.exists(file_path):
-        st.error(f"Embedded PDF file not found at path: `{file_path}`. Please ensure `{file_path}` exists in the working directory.")
-        st.stop()
-
-    pdf = fitz.open(file_path)
+def extract_all_documents(pdf_filenames: List[str]) -> List[Dict]:
     documents = []
+    missing_files = []
 
-    for page_number, page in enumerate(pdf, start=1):
-        text = clean_text(page.get_text("text"))
+    for filename in pdf_filenames:
+        file_path = os.path.join(BASE_DIR, filename)
+        if not os.path.exists(file_path):
+            missing_files.append(filename)
+            continue
 
-        if text:
-            documents.append(
-                {
-                    "source": os.path.basename(file_path),
-                    "page": page_number,
-                    "text": text,
-                }
-            )
+        pdf = fitz.open(file_path)
+        for page_number, page in enumerate(pdf, start=1):
+            text = clean_text(page.get_text("text"))
+            if text:
+                documents.append(
+                    {
+                        "source": filename,
+                        "page": page_number,
+                        "text": text,
+                    }
+                )
+        pdf.close()
 
-    pdf.close()
+    if missing_files:
+        st.warning(f"Missing legal PDF files in project directory: {', '.join(missing_files)}")
+
     return documents
 
 
@@ -177,7 +189,7 @@ def load_embedding_model():
     return SentenceTransformer(EMBEDDING_MODEL)
 
 
-@st.cache_resource(show_spinner="Building search index...")
+@st.cache_resource(show_spinner="Indexing legal databases (PECA & PPC)...")
 def build_faiss_index(texts: Tuple[str, ...]):
     model = load_embedding_model()
 
@@ -198,8 +210,8 @@ def retrieve_documents(
     question: str,
     chunked_documents: List[Dict],
     index,
-    top_k: int = 5,
-    min_similarity: float = 0.30,
+    top_k: int = 6,
+    min_similarity: float = 0.25,
 ) -> List[Dict]:
 
     if not chunked_documents or index is None:
@@ -258,22 +270,15 @@ def build_prompt(
     context = format_context(results)
 
     return f"""
-You are CyberShield AI, a cyber-safety and Pakistani cyber-law information assistant.
+You are CyberShield & Legal AI, an assistant for cyber-safety and Pakistani criminal law (PECA 2016 & PPC 1860).
 
 STRICT GROUNDING RULES:
-1. Use ONLY the supplied document context for legal claims.
-2. Do NOT invent sections, penalties, procedures, authorities, case law, or legal rights.
-3. If the supplied context does not support the answer, say exactly:
-   "{NOT_FOUND_RESPONSE}"
+1. Use ONLY the supplied document context for legal claims and section numbers.
+2. Do NOT invent sections, penalties, procedures, or authorities.
+3. If the context does not support the answer, state: "{NOT_FOUND_RESPONSE}"
 4. Do not pretend to be a lawyer.
-5. Do not provide instructions that facilitate hacking, credential theft, malware,
-   evasion, unauthorized access, or other cybercrime.
-6. For safety questions, prioritize lawful and defensive actions.
-7. If the user appears to face immediate physical danger, advise contacting local
-   emergency services or a trusted person rather than focusing only on the law.
-8. Clearly distinguish between what the document states and general safety advice.
-9. Cite relevant source pages in the answer using [Page X].
-10. Never create a citation for a page that is not present in the supplied context.
+5. If the user appears to face immediate physical danger, prioritize urgent safety actions (dialing 15 / 1122 / seeking shelter).
+6. Cite relevant source pages in the answer using [Source: Document Name - Page X].
 
 USER QUESTION:
 {question}
@@ -296,32 +301,17 @@ def generate_answer(
     api_key = get_groq_api_key()
 
     if not api_key:
-        return (
-            "Groq API key is not configured. Add GROQ_API_KEY to Streamlit "
-            "Secrets or set environment variable before requesting answers."
-        )
+        return "Groq API key is not configured. Add GROQ_API_KEY to Streamlit Secrets."
 
     client = Groq(api_key=api_key)
 
-    prompt = build_prompt(
-        question,
-        results,
-    )
+    prompt = build_prompt(question, results)
 
     response = client.chat.completions.create(
         model=model_name,
         messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a careful cyber-safety and legal-information assistant. "
-                    "Follow the grounding rules exactly."
-                ),
-            },
-            {
-                "role": "user",
-                "content": prompt,
-            },
+            {"role": "system", "content": "You are a legal assistant for PECA and PPC statutes."},
+            {"role": "user", "content": prompt},
         ],
         temperature=temperature,
     )
@@ -330,20 +320,17 @@ def generate_answer(
 
 
 # =========================================================
-# Sidebar: How To Use
+# Sidebar
 # =========================================================
 with st.sidebar:
     st.header("📖 How to Use")
     st.markdown(
         """
-        Welcome to **CyberShield AI**! Follow these steps to ask legal or cyber-safety questions:
+        Welcome to **CyberShield & Legal AI**! 
 
-        1. **Select an Example Question**: Click on any of the example question buttons to ask predefined legal queries.
-        2. **Ask Manually**: Type your own cyber-safety or cyber-law query in the input box at the bottom.
-        3. **View Source References**: Each response includes verifiable page citations from the embedded **Prevention of Electronic Crimes Act (PECA 2016)** document.
-        
-        ---
-        🔒 *Note: The system searches directly within the internal PECA 2016 law database.*
+        1. **Select an Example Question**: Click any predefined query to test PECA or PPC statutes.
+        2. **Ask Manually**: Type your question into the chat bar at the bottom.
+        3. **View Citations**: Responses feature exact page references from embedded **PECA 2016** and **PPC 1860** statutes.
         """
     )
 
@@ -351,32 +338,34 @@ with st.sidebar:
 # =========================================================
 # Main UI
 # =========================================================
-st.title("🛡️ CyberShield AI")
+st.title("🛡️ CyberShield & Legal AI")
 st.caption(
-    "AI-powered cyber-safety and Pakistani cyber-law information assistant built with RAG."
+    "Grounded AI Legal & Cyber-Safety Assistant (PECA 2016 & Pakistan Penal Code 1860)."
 )
 
-# Load embedded PDF documents automatically
+# Load legal documents
 try:
-    documents = extract_pdf_documents_from_filepath(LOCAL_PDF_PATH)
+    documents = extract_all_documents(INTERNAL_PDF_FILES)
+    if not documents:
+        st.error("No legal documents found. Ensure PECA_2016.pdf and PPC_1860.pdf are present.")
+        st.stop()
     chunked_documents = build_chunks(documents)
     texts = tuple(item["text"] for item in chunked_documents)
     index = build_faiss_index(texts)
 except Exception as e:
-    st.error(f"Error loading internal legal document: {e}")
+    st.error(f"Error initializing legal index: {e}")
     st.stop()
 
 
-# Example Questions Section (Includes Cyberbullying & PECA-specific queries)
+# Example Questions
 st.markdown("### 💡 Example Questions")
-st.caption("Click a button below to quickly run a sample query:")
 
 example_questions = [
-    "What is cyberbullying under Section 24A of PECA?",
-    "What is the punishment for child cyberbullying?",
-    "What does PECA say about cyber stalking and online harassment?",
-    "How can a guardian report online cyberbullying of a minor?",
-    "What does the law say about online threats and blackmailing?",
+    "What does Section 24A of PECA say about cyberbullying?",
+    "What are the penalties under PPC for rape and sexual assault?",
+    "What is the punishment for cyber stalking under PECA?",
+    "What does the Pakistan Penal Code say about criminal intimidation?",
+    "How can I report online harassment or physical threats?",
 ]
 
 col1, col2 = st.columns(2)
@@ -406,10 +395,8 @@ for message in st.session_state.messages:
                         f"(similarity: {source['similarity']:.3f})"
                     )
 
-# Manual Question Input
-manual_question = st.chat_input("Ask a question about cyber-law or online safety...")
-
-# Handle input priority (either example button clicked or manually submitted)
+# Manual Input
+manual_question = st.chat_input("Ask a question about legal laws (PECA/PPC) or emergency safety...")
 question = selected_example or manual_question
 
 if question:
@@ -419,7 +406,7 @@ if question:
         st.markdown(question)
 
     with st.chat_message("assistant"):
-        if not is_cyber_question(question):
+        if not is_legal_or_cyber_question(question):
             answer = OUT_OF_SCOPE_RESPONSE + FOOTER_INFO
             sources = []
         else:
@@ -427,15 +414,11 @@ if question:
                 question,
                 chunked_documents,
                 index,
-                top_k=5,
-                min_similarity=0.30,
+                top_k=6,
+                min_similarity=0.25,
             )
 
-            raw_answer = generate_answer(
-                question,
-                sources,
-            )
-            # Append reporting & emergency info to the end of every answer
+            raw_answer = generate_answer(question, sources)
             answer = raw_answer + FOOTER_INFO
 
         st.markdown(answer)
