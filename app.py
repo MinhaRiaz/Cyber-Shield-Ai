@@ -11,20 +11,82 @@ import fitz  # PyMuPDF
 
 
 # =========================================================
-# Configuration
+# Page & Layout Configuration
 # =========================================================
 st.set_page_config(
     page_title="CyberShield & Legal AI",
     page_icon="🛡️",
     layout="wide",
+    initial_sidebar_state="expanded"
 )
+
+# Custom CSS for Modern UI/UX Styling
+st.markdown("""
+    <style>
+    /* Main App Background & Typography */
+    .main {
+        padding-top: 1rem;
+    }
+    
+    /* Header Card Styling */
+    .header-card {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border-radius: 12px;
+        padding: 24px;
+        color: white;
+        margin-bottom: 25px;
+        border: 1px solid #334155;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    .header-title {
+        font-size: 2.2rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+        color: #38bdf8;
+    }
+    .header-subtitle {
+        font-size: 1.05rem;
+        color: #94a3b8;
+        margin-bottom: 0px;
+    }
+
+    /* Badge Tags */
+    .badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        margin-right: 8px;
+        background-color: #0284c7;
+        color: white;
+    }
+    
+    /* Emergency Box Styling */
+    .emergency-card {
+        background-color: #0f172a;
+        border-left: 5px solid #ef4444;
+        padding: 16px;
+        border-radius: 8px;
+        margin-top: 20px;
+        border-top: 1px solid #1e293b;
+        border-right: 1px solid #1e293b;
+        border-bottom: 1px solid #1e293b;
+    }
+    
+    /* Clean Divider */
+    hr {
+        margin: 1.5rem 0;
+        border-color: #334155;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# List of embedded legal documents to load into the vector index
 INTERNAL_PDF_FILES = ["PECA_2016.pdf", "PPC_1860.pdf"]
 
 NOT_FOUND_RESPONSE = (
@@ -38,20 +100,17 @@ OUT_OF_SCOPE_RESPONSE = (
 )
 
 FOOTER_INFO = """
-
----
-### 🚨 Immediate Reporting & Emergency Guidance
-* **National Cyber Crime Investigation Agency (NCCIA)**:
-  * **Helpline**: Call **1799** (24/7)
-  * **Online Portal**: [complaint.nccia.gov.pk](https://complaint.nccia.gov.pk)
-  * **Email**: `helpdesk@nccia.gov.pk`
-* **Police & Rescue Emergencies**:
-  * **Police Emergency**: Call **15**
-  * **Ambulance / Rescue**: Call **1122**
-* **Evidence Preservation**: Save unedited screenshots, URLs, chat logs, and timestamps before deleting messages.
+<div class="emergency-card">
+<h4>🚨 Immediate Reporting & Emergency Guidance</h4>
+<ul>
+  <li><b>National Cyber Crime Investigation Agency (NCCIA)</b>: Helpline <b>1799</b> (24/7) | <a href="https://complaint.nccia.gov.pk" target="_blank">Online Portal</a></li>
+  <li><b>Digital Rights Foundation (DRF) Helpline</b>: <b>0800-39393</b> (Free & Confidential Support)</li>
+  <li><b>Police & Emergency Rescue</b>: Police <b>15</b> | Rescue <b>1122</b></li>
+  <li><b>Evidence Preservation</b>: Save unedited screenshots, URLs, chat logs, and timestamps before deleting any messages.</li>
+</ul>
+</div>
 """
 
-# Broadened keyword scope covering PECA + PPC criminal offenses
 LEGAL_KEYWORDS = {
     "cyber", "online", "internet", "social media", "facebook", "instagram",
     "whatsapp", "tiktok", "email", "account", "password", "hacking",
@@ -69,7 +128,7 @@ LEGAL_KEYWORDS = {
 
 
 # =========================================================
-# Helpers
+# Helpers & RAG Processing
 # =========================================================
 def get_groq_api_key() -> str:
     try:
@@ -93,18 +152,10 @@ def is_legal_or_cyber_question(question: str) -> bool:
         return True
 
     patterns = [
-        r"\bonline\b",
-        r"\binternet\b",
-        r"\bdigital\b",
-        r"\belectron",
-        r"\bsocial\s+media\b",
-        r"\bmy\s+account\b",
-        r"\bsomeone\s+is\s+.*\bthreat",
-        r"\bsomeone\s+.*\bmessage",
-        r"\bsomeone\s+.*\bphoto",
-        r"\bsomeone\s+.*\bvideo",
-        r"\bsomeone\s+.*\bhurt",
-        r"\bwhat\s+should\s+i\s+do\b"
+        r"\bonline\b", r"\binternet\b", r"\bdigital\b", r"\belectron",
+        r"\bsocial\s+media\b", r"\bmy\s+account\b", r"\bsomeone\s+is\s+.*\bthreat",
+        r"\bsomeone\s+.*\bmessage", r"\bsomeone\s+.*\bphoto", r"\bsomeone\s+.*\bvideo",
+        r"\bsomeone\s+.*\bhurt", r"\bwhat\s+should\s+i\s+do\b"
     ]
 
     return any(re.search(pattern, q) for pattern in patterns)
@@ -117,7 +168,6 @@ def clean_text(text: str) -> str:
 
 def chunk_text(text: str, chunk_size: int = 900, overlap: int = 150) -> List[str]:
     words = text.split()
-
     if not words:
         return []
 
@@ -170,7 +220,6 @@ def extract_all_documents(pdf_filenames: List[str]) -> List[Dict]:
 
 def build_chunks(documents: List[Dict]) -> List[Dict]:
     chunks = []
-
     for doc in documents:
         for chunk in chunk_text(doc["text"]):
             chunks.append(
@@ -180,7 +229,6 @@ def build_chunks(documents: List[Dict]) -> List[Dict]:
                     "text": chunk,
                 }
             )
-
     return chunks
 
 
@@ -249,7 +297,6 @@ def retrieve_documents(
 
 def format_context(results: List[Dict]) -> str:
     blocks = []
-
     for i, item in enumerate(results, start=1):
         blocks.append(
             f"[Source {i}]\n"
@@ -258,7 +305,6 @@ def format_context(results: List[Dict]) -> str:
             f"Similarity: {item['similarity']:.3f}\n"
             f"Text: {item['text']}"
         )
-
     return "\n\n".join(blocks)
 
 
@@ -323,7 +369,6 @@ def generate_answer(
         return "Groq API key is not configured. Add GROQ_API_KEY to Streamlit Secrets."
 
     client = Groq(api_key=api_key)
-
     prompt = build_prompt(question, results, response_format)
 
     response = client.chat.completions.create(
@@ -339,56 +384,64 @@ def generate_answer(
 
 
 # =========================================================
-# Sidebar
+# Sidebar UI
 # =========================================================
 with st.sidebar:
-    st.header("📖 How to Use")
-    st.markdown(
-        """
-        Welcome to **CyberShield & Legal AI**! 
-
-        1. **Select Answer Format**: Choose below whether you want a full explanation, main bullet points, or a brief summary.
-        2. **Select an Example Question**: Click any predefined query to test PECA or PPC statutes.
-        3. **Ask Manually**: Type your question into the chat bar at the bottom.
-        4. **View Citations**: Responses feature exact page references from embedded **PECA 2016** and **PPC 1860** statutes.
-        """
-    )
+    st.image("https://img.icons8.com/color/96/000000/shield.png", width=70)
+    st.title("CyberShield AI")
+    st.caption("Version 2.0 • Grounded RAG Assistant")
     
-    st.divider()
-    
-    st.header("⚙️ Response Settings")
+    st.markdown("---")
+    st.subheader("⚙️ Response Style")
     response_format = st.radio(
-        "Response Format:",
+        "Choose Answer Depth:",
         ["Full Explanation", "Main Points (Bullets)", "Brief Summary"],
         index=0,
-        help="Select how detailed or concise you want the assistant's answer to be."
+        help="Controls the level of detail provided by the AI assistant."
+    )
+    
+    st.markdown("---")
+    st.subheader("📖 Quick Instructions")
+    st.markdown(
+        """
+        1. **Select an Example**: Click any button below to test common queries.
+        2. **Custom Question**: Use the chat box at the bottom for specific questions.
+        3. **View Sources**: Click **📚 Sources** under answers to see verified page numbers from **PECA 2016** & **PPC 1860**.
+        """
     )
 
 
 # =========================================================
-# Main UI
+# Main UI & Header Banner
 # =========================================================
-st.title("🛡️ CyberShield & Legal AI")
-st.caption(
-    "Grounded AI Legal & Cyber-Safety Assistant (PECA 2016 & Pakistan Penal Code 1860)."
-)
+st.markdown("""
+<div class="header-card">
+    <div class="header-title">🛡️ CyberShield & Legal AI</div>
+    <div class="header-subtitle">Grounded Cyber-Safety, Cyberbullying & Criminal Law Assistant for Pakistan</div>
+    <div style="margin-top: 15px;">
+        <span class="badge">PECA 2016 Indexed</span>
+        <span class="badge">PPC 1860 Indexed</span>
+        <span class="badge">Groq LPUs Active</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # Load legal documents
 try:
     documents = extract_all_documents(INTERNAL_PDF_FILES)
     if not documents:
-        st.error("No legal documents found. Ensure PECA_2016.pdf and PPC_1860.pdf are present.")
+        st.error("No legal documents found. Ensure PECA_2016.pdf and PPC_1860.pdf are present in the directory.")
         st.stop()
     chunked_documents = build_chunks(documents)
     texts = tuple(item["text"] for item in chunked_documents)
     index = build_faiss_index(texts)
 except Exception as e:
-    st.error(f"Error initializing legal index: {e}")
+    st.error(f"Error initializing legal vector index: {e}")
     st.stop()
 
 
-# Example Questions
-st.markdown("### 💡 Example Questions")
+# Example Questions Section
+st.subheader("💡 Frequently Asked Example Questions")
 
 example_questions = [
     "What does Section 24A of PECA say about cyberbullying?",
@@ -406,27 +459,27 @@ for i, eq in enumerate(example_questions):
     if col.button(eq, use_container_width=True):
         selected_example = eq
 
-st.divider()
+st.markdown("---")
 
 # Message State Initialization
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display prior chat messages
+# Display Chat History
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+        st.markdown(message["content"], unsafe_allow_html=True)
 
         if message.get("sources"):
-            with st.expander("📚 Sources"):
+            with st.expander("📚 Verified Statutory Sources"):
                 for source in message["sources"]:
                     st.markdown(
                         f"- **{source['source']} — Page {source['page']}** "
-                        f"(similarity: {source['similarity']:.3f})"
+                        f"*(Relevance Score: {source['similarity']:.3f})*"
                     )
 
-# Manual Input
-manual_question = st.chat_input("Ask a question about legal laws (PECA/PPC) or emergency safety...")
+# Chat Input Handler
+manual_question = st.chat_input("Ask a question about legal laws (PECA/PPC), cyber safety, or reporting...")
 question = selected_example or manual_question
 
 if question:
@@ -455,14 +508,14 @@ if question:
             )
             answer = raw_answer + FOOTER_INFO
 
-        st.markdown(answer)
+        st.markdown(answer, unsafe_allow_html=True)
 
         if sources:
-            with st.expander("📚 Sources"):
+            with st.expander("📚 Verified Statutory Sources"):
                 for source in sources:
                     st.markdown(
                         f"- **{source['source']} — Page {source['page']}** "
-                        f"(similarity: {source['similarity']:.3f})"
+                        f"*(Relevance Score: {source['similarity']:.3f})*"
                     )
 
     st.session_state.messages.append(
