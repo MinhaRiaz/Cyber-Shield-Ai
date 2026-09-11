@@ -23,18 +23,15 @@ st.set_page_config(
 # Custom CSS for Modern UI/UX Styling
 st.markdown("""
     <style>
-    /* Main App Background & Typography */
     .main {
         padding-top: 1rem;
     }
-    
-    /* Header Card Styling */
     .header-card {
         background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
         border-radius: 12px;
         padding: 24px;
         color: white;
-        margin-bottom: 25px;
+        margin-bottom: 20px;
         border: 1px solid #334155;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }
@@ -49,8 +46,6 @@ st.markdown("""
         color: #94a3b8;
         margin-bottom: 0px;
     }
-
-    /* Badge Tags */
     .badge {
         display: inline-block;
         padding: 4px 12px;
@@ -61,20 +56,21 @@ st.markdown("""
         background-color: #0284c7;
         color: white;
     }
-    
-    /* Emergency Box Styling */
+    .topic-card {
+        background-color: #1e293b;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        border: 1px solid #334155;
+    }
     .emergency-card {
         background-color: #0f172a;
         border-left: 5px solid #ef4444;
         padding: 16px;
         border-radius: 8px;
         margin-top: 20px;
-        border-top: 1px solid #1e293b;
-        border-right: 1px solid #1e293b;
-        border-bottom: 1px solid #1e293b;
+        border: 1px solid #1e293b;
     }
-    
-    /* Clean Divider */
     hr {
         margin: 1.5rem 0;
         border-color: #334155;
@@ -124,6 +120,34 @@ LEGAL_KEYWORDS = {
     "abuse", "blackmailing", "online safety", "rape", "assault", "murder",
     "hurt", "kidnap", "abduction", "theft", "dacoity", "police", "section",
     "punishment", "imprisonment", "fine", "law", "legal", "offence"
+}
+
+# Categorized list of supported issues to display to users
+SUPPORTED_CATEGORIES = {
+    "📱 Digital Harassment & Cyberstalking": [
+        "Cyber stalking (repeating unwanted contact online) — PECA Sec 24",
+        "Cyberbullying & online harassment — PECA Sec 24A",
+        "Doxxing & releasing private personal details/photos without consent",
+        "Online threats & blackmailing via chat/WhatsApp/social media"
+    ],
+    "🔐 Account Security & Unauthorized Access": [
+        "Account hacking & unauthorized access to messages/data — PECA Sec 3",
+        "Identity theft & unauthorized use of identity information — PECA Sec 16",
+        "Fake social media accounts & impersonation",
+        "Unauthorized SIM card issuance — PECA Sec 17"
+    ],
+    "💸 Financial Scams & Digital Fraud": [
+        "Online bank fraud & OTP/password scams — PECA Sec 14",
+        "Phishing websites, spoofing & counterfeit platforms — PECA Sec 26",
+        "Spamming & fraudulent marketing messages — PECA Sec 25",
+        "Extortion & unauthorized data copying — PECA Sec 4"
+    ],
+    "🚨 Offenses Against Person (PPC Criminal Laws)": [
+        "Physical threats, intimidation & assault — PPC Sections",
+        "Rape, sexual assault & offences against modesty — PPC Sec 375/376 & PECA Sec 21",
+        "Kidnapping, abduction & human trafficking — PPC Sections & PECA Sec 22C",
+        "Child protection against online exploitation — PECA Sec 22/22A"
+    ]
 }
 
 
@@ -389,7 +413,7 @@ def generate_answer(
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/000000/shield.png", width=70)
     st.title("CyberShield AI")
-    st.caption("Version 2.0 • Grounded RAG Assistant")
+    st.caption("Version 2.0 • PECA & PPC Assistant")
     
     st.markdown("---")
     st.subheader("⚙️ Response Style")
@@ -401,14 +425,12 @@ with st.sidebar:
     )
     
     st.markdown("---")
-    st.subheader("📖 Quick Instructions")
-    st.markdown(
-        """
-        1. **Select an Example**: Click any button below to test common queries.
-        2. **Custom Question**: Use the chat box at the bottom for specific questions.
-        3. **View Sources**: Click **📚 Sources** under answers to see verified page numbers from **PECA 2016** & **PPC 1860**.
-        """
-    )
+    st.subheader("📋 Quick Scope Checker")
+    selected_cat = st.selectbox("Select a Topic to Check Scope:", list(SUPPORTED_CATEGORIES.keys()))
+    
+    st.markdown(f"**Issues covered under {selected_cat}:**")
+    for issue in SUPPORTED_CATEGORIES[selected_cat]:
+        st.markdown(f"• {issue}")
 
 
 # =========================================================
@@ -439,6 +461,24 @@ except Exception as e:
     st.error(f"Error initializing legal vector index: {e}")
     st.stop()
 
+
+# Expandable Supported Issues Overview Section
+with st.expander("📌 **Click here to view ALL Supported Issues & Covered Laws (PECA & PPC)**", expanded=False):
+    st.markdown("### What issues can you ask CyberShield AI about?")
+    st.caption("The system can answer legal questions, penalties, and defensive steps for all the following categories:")
+    
+    cols = st.columns(2)
+    cat_keys = list(SUPPORTED_CATEGORIES.keys())
+    
+    for idx, key in enumerate(cat_keys):
+        col = cols[idx % 2]
+        with col:
+            st.markdown(f"#### {key}")
+            for item in SUPPORTED_CATEGORIES[key]:
+                st.markdown(f"- {item}")
+            st.markdown("<br>", unsafe_allow_html=True)
+
+st.divider()
 
 # Example Questions Section
 st.subheader("💡 Frequently Asked Example Questions")
