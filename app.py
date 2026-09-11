@@ -265,9 +265,24 @@ def format_context(results: List[Dict]) -> str:
 def build_prompt(
     question: str,
     results: List[Dict],
+    response_format: str = "Full Explanation",
 ) -> str:
 
     context = format_context(results)
+
+    if response_format == "Main Points (Bullets)":
+        format_instruction = (
+            "Provide the response strictly as clear, bulleted main points highlighting key legal takeaways, "
+            "penalties, and immediate actionable steps."
+        )
+    elif response_format == "Brief Summary":
+        format_instruction = (
+            "Provide a concise 3 to 4 sentence summary explaining the situation, legal standing, and key action steps."
+        )
+    else:  # Full Explanation
+        format_instruction = (
+            "Provide a detailed, comprehensive legal and practical explanation broken down into structured sections."
+        )
 
     return f"""
 You are CyberShield & Legal AI, an assistant for cyber-safety and Pakistani criminal law (PECA 2016 & PPC 1860).
@@ -280,6 +295,9 @@ STRICT GROUNDING RULES:
 5. If the user appears to face immediate physical danger, prioritize urgent safety actions (dialing 15 / 1122 / seeking shelter).
 6. Cite relevant source pages in the answer using [Source: Document Name - Page X].
 
+RESPONSE FORMAT INSTRUCTION:
+{format_instruction}
+
 USER QUESTION:
 {question}
 
@@ -291,6 +309,7 @@ SUPPLIED DOCUMENT CONTEXT:
 def generate_answer(
     question: str,
     results: List[Dict],
+    response_format: str = "Full Explanation",
     model_name: str = DEFAULT_GROQ_MODEL,
     temperature: float = 0.1,
 ) -> str:
@@ -305,7 +324,7 @@ def generate_answer(
 
     client = Groq(api_key=api_key)
 
-    prompt = build_prompt(question, results)
+    prompt = build_prompt(question, results, response_format)
 
     response = client.chat.completions.create(
         model=model_name,
@@ -328,10 +347,21 @@ with st.sidebar:
         """
         Welcome to **CyberShield & Legal AI**! 
 
-        1. **Select an Example Question**: Click any predefined query to test PECA or PPC statutes.
-        2. **Ask Manually**: Type your question into the chat bar at the bottom.
-        3. **View Citations**: Responses feature exact page references from embedded **PECA 2016** and **PPC 1860** statutes.
+        1. **Select Answer Format**: Choose below whether you want a full explanation, main bullet points, or a brief summary.
+        2. **Select an Example Question**: Click any predefined query to test PECA or PPC statutes.
+        3. **Ask Manually**: Type your question into the chat bar at the bottom.
+        4. **View Citations**: Responses feature exact page references from embedded **PECA 2016** and **PPC 1860** statutes.
         """
+    )
+    
+    st.divider()
+    
+    st.header("⚙️ Response Settings")
+    response_format = st.radio(
+        "Response Format:",
+        ["Full Explanation", "Main Points (Bullets)", "Brief Summary"],
+        index=0,
+        help="Select how detailed or concise you want the assistant's answer to be."
     )
 
 
@@ -418,7 +448,11 @@ if question:
                 min_similarity=0.25,
             )
 
-            raw_answer = generate_answer(question, sources)
+            raw_answer = generate_answer(
+                question,
+                sources,
+                response_format=response_format
+            )
             answer = raw_answer + FOOTER_INFO
 
         st.markdown(answer)
