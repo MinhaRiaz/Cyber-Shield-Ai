@@ -21,7 +21,10 @@ st.set_page_config(
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
-LOCAL_PDF_PATH = "PECA_2016.pdf"
+
+# Resolve path relative to where app.py is located
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOCAL_PDF_PATH = os.path.join(BASE_DIR, "PECA_2016.pdf")
 
 NOT_FOUND_RESPONSE = (
     "Sorry, this information is not found in the uploaded legal document."
@@ -32,6 +35,19 @@ OUT_OF_SCOPE_RESPONSE = (
     "Please ask a question related to cyber safety, cybercrime, "
     "online harassment, digital offences, or the PECA cyber-law document."
 )
+
+# Appended at the very end of every assistant response
+FOOTER_INFO = """
+
+---
+### 🚨 Immediate Reporting & Emergency Guidance
+* **National Cyber Crime Investigation Agency (NCCIA)**:
+  * **Helpline**: Call **1799** (24/7)
+  * **Online Portal**: [complaint.nccia.gov.pk](https://complaint.nccia.gov.pk)
+  * **Email**: `helpdesk@nccia.gov.pk`
+* **Evidence Preservation**: Save unedited screenshots, profile URLs, chat logs, and timestamps before blocking or deleting messages.
+* **Immediate Physical Danger**: If you feel physically unsafe, call **15** (Police) or **1122** immediately.
+"""
 
 CYBER_KEYWORDS = {
     "cyber", "online", "internet", "social media", "facebook", "instagram",
@@ -351,16 +367,16 @@ except Exception as e:
     st.stop()
 
 
-# Example Questions Section
+# Example Questions Section (Includes Cyberbullying & PECA-specific queries)
 st.markdown("### 💡 Example Questions")
 st.caption("Click a button below to quickly run a sample query:")
 
 example_questions = [
-    "What does the law say about cyber stalking?",
-    "What is the punishment for cyberbullying?",
-    "What does the law say about online threats?",
-    "What is electronic fraud according to PECA?",
-    "What evidence should I preserve in case of cybercrime?",
+    "What is cyberbullying under Section 24A of PECA?",
+    "What is the punishment for child cyberbullying?",
+    "What does PECA say about cyber stalking and online harassment?",
+    "How can a guardian report online cyberbullying of a minor?",
+    "What does the law say about online threats and blackmailing?",
 ]
 
 col1, col2 = st.columns(2)
@@ -404,7 +420,7 @@ if question:
 
     with st.chat_message("assistant"):
         if not is_cyber_question(question):
-            answer = OUT_OF_SCOPE_RESPONSE
+            answer = OUT_OF_SCOPE_RESPONSE + FOOTER_INFO
             sources = []
         else:
             sources = retrieve_documents(
@@ -415,10 +431,12 @@ if question:
                 min_similarity=0.30,
             )
 
-            answer = generate_answer(
+            raw_answer = generate_answer(
                 question,
                 sources,
             )
+            # Append reporting & emergency info to the end of every answer
+            answer = raw_answer + FOOTER_INFO
 
         st.markdown(answer)
 
