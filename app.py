@@ -21,6 +21,7 @@ st.set_page_config(
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
+LOCAL_PDF_PATH = "PECA_2016.pdf"
 
 NOT_FOUND_RESPONSE = (
     "Sorry, this information is not found in the uploaded legal document."
@@ -29,7 +30,7 @@ NOT_FOUND_RESPONSE = (
 OUT_OF_SCOPE_RESPONSE = (
     "This question is outside the scope of CyberShield AI. "
     "Please ask a question related to cyber safety, cybercrime, "
-    "online harassment, digital offences, or the uploaded cyber-law document."
+    "online harassment, digital offences, or the PECA cyber-law document."
 )
 
 CYBER_KEYWORDS = {
@@ -42,7 +43,7 @@ CYBER_KEYWORDS = {
     "doxxing", "fake account", "deepfake", "photo", "video", "defamation",
     "crime", "criminal", "evidence", "report", "complaint", "peca",
     "electronic", "digital", "device", "computer", "mobile", "website",
-    "website", "abuse", "blackmailing", "online safety"
+    "abuse", "blackmailing", "online safety"
 }
 
 
@@ -67,11 +68,9 @@ def is_cyber_question(question: str) -> bool:
     if not q:
         return False
 
-    # Direct legal/cyber terms
     if any(keyword in q for keyword in CYBER_KEYWORDS):
         return True
 
-    # Common question patterns that can be cyber-related
     patterns = [
         r"\bonline\b",
         r"\binternet\b",
@@ -117,10 +116,12 @@ def chunk_text(text: str, chunk_size: int = 900, overlap: int = 150) -> List[str
     return chunks
 
 
-def extract_pdf_documents(uploaded_file) -> List[Dict]:
-    pdf_bytes = uploaded_file.getvalue()
-    pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
+def extract_pdf_documents_from_filepath(file_path: str) -> List[Dict]:
+    if not os.path.exists(file_path):
+        st.error(f"Embedded PDF file not found at path: `{file_path}`. Please ensure `{file_path}` exists in the working directory.")
+        st.stop()
 
+    pdf = fitz.open(file_path)
     documents = []
 
     for page_number, page in enumerate(pdf, start=1):
@@ -129,7 +130,7 @@ def extract_pdf_documents(uploaded_file) -> List[Dict]:
         if text:
             documents.append(
                 {
-                    "source": uploaded_file.name,
+                    "source": os.path.basename(file_path),
                     "page": page_number,
                     "text": text,
                 }
@@ -236,23 +237,9 @@ def format_context(results: List[Dict]) -> str:
 def build_prompt(
     question: str,
     results: List[Dict],
-    technicality: str,
-    response_size: str,
 ) -> str:
 
     context = format_context(results)
-
-    size_instruction = {
-        "Short": "Answer briefly in 3–5 clear bullet points.",
-        "Medium": "Give a clear answer with the important legal/safety points.",
-        "Detailed": "Give a structured explanation with legal context, practical safety steps, evidence preservation, and reporting guidance where supported.",
-    }[response_size]
-
-    technicality_instruction = {
-        "Simple": "Use simple language suitable for a general user. Explain legal terms briefly.",
-        "Balanced": "Use clear language with necessary legal terminology and short explanations.",
-        "Technical": "Use precise legal and technical terminology, while remaining understandable.",
-    }[technicality]
 
     return f"""
 You are CyberShield AI, a cyber-safety and Pakistani cyber-law information assistant.
@@ -272,12 +259,6 @@ STRICT GROUNDING RULES:
 9. Cite relevant source pages in the answer using [Page X].
 10. Never create a citation for a page that is not present in the supplied context.
 
-TECHNICALITY:
-{technicality_instruction}
-
-RESPONSE SIZE:
-{size_instruction}
-
 USER QUESTION:
 {question}
 
@@ -289,10 +270,8 @@ SUPPLIED DOCUMENT CONTEXT:
 def generate_answer(
     question: str,
     results: List[Dict],
-    technicality: str,
-    response_size: str,
-    model_name: str,
-    temperature: float,
+    model_name: str = DEFAULT_GROQ_MODEL,
+    temperature: float = 0.1,
 ) -> str:
 
     if not results:
@@ -303,7 +282,7 @@ def generate_answer(
     if not api_key:
         return (
             "Groq API key is not configured. Add GROQ_API_KEY to Streamlit "
-            "Secrets before using the AI response."
+            "Secrets or set environment variable before requesting answers."
         )
 
     client = Groq(api_key=api_key)
@@ -311,8 +290,6 @@ def generate_answer(
     prompt = build_prompt(
         question,
         results,
-        technicality,
-        response_size,
     )
 
     response = client.chat.completions.create(
@@ -337,131 +314,70 @@ def generate_answer(
 
 
 # =========================================================
-# UI
+# Sidebar: How To Use
+# =========================================================
+with st.sidebar:
+    st.header("📖 How to Use")
+    st.markdown(
+        """
+        Welcome to **CyberShield AI**! Follow these steps to ask legal or cyber-safety questions:
+
+        1. **Select an Example Question**: Click on any of the example question buttons to ask predefined legal queries.
+        2. **Ask Manually**: Type your own cyber-safety or cyber-law query in the input box at the bottom.
+        3. **View Source References**: Each response includes verifiable page citations from the embedded **Prevention of Electronic Crimes Act (PECA 2016)** document.
+        
+        ---
+        🔒 *Note: The system searches directly within the internal PECA 2016 law database.*
+        """
+    )
+
+
+# =========================================================
+# Main UI
 # =========================================================
 st.title("🛡️ CyberShield AI")
 st.caption(
-    "AI-powered cyber-safety and Pakistani cyber-law information assistant "
-    "using Retrieval-Augmented Generation (RAG)."
+    "AI-powered cyber-safety and Pakistani cyber-law information assistant built with RAG."
 )
 
-with st.sidebar:
-    st.header("⚙️ Settings")
-
-    technicality = st.selectbox(
-        "Technicality",
-        ["Simple", "Balanced", "Technical"],
-        index=1,
-    )
-
-    response_size = st.selectbox(
-        "Response size",
-        ["Short", "Medium", "Detailed"],
-        index=1,
-    )
-
-    top_k = st.slider(
-        "Retrieved sources",
-        min_value=2,
-        max_value=8,
-        value=5,
-    )
-
-    min_similarity = st.slider(
-        "Minimum similarity",
-        min_value=0.10,
-        max_value=0.80,
-        value=0.30,
-        step=0.05,
-        help="Higher values make the assistant stricter about document relevance.",
-    )
-
-    temperature = st.slider(
-        "Temperature",
-        min_value=0.0,
-        max_value=0.6,
-        value=0.1,
-        step=0.05,
-    )
-
-    model_name = st.selectbox(
-        "Groq model",
-        [
-            "openai/gpt-oss-120b",
-            "openai/gpt-oss-20b",
-        ],
-        index=0,
-    )
-
-    st.divider()
-
-    st.markdown("### 📄 Legal document")
-    st.caption(
-        "Upload the PECA/cyber-law PDF you want CyberShield AI to use as its "
-        "legal knowledge source."
-    )
-
-    uploaded_file = st.file_uploader(
-        "Upload PDF",
-        type=["pdf"],
-    )
-
-
-if not uploaded_file:
-    st.info(
-        "Upload your PECA / cyber-law PDF from the sidebar to build the RAG index."
-    )
-
-    st.markdown("### Example questions")
-    st.markdown(
-        """
-        - What does the law say about cyber stalking?
-        - What should I do if someone is harassing me online?
-        - What is cyberbullying?
-        - What evidence should I preserve?
-        - What does the uploaded law say about online threats?
-        """
-    )
-
-    st.stop()
-
-
-# =========================================================
-# Build RAG corpus
-# =========================================================
+# Load embedded PDF documents automatically
 try:
-    documents = extract_pdf_documents(uploaded_file)
-
-    if not documents:
-        st.error("No readable text was found in this PDF.")
-        st.stop()
-
+    documents = extract_pdf_documents_from_filepath(LOCAL_PDF_PATH)
     chunked_documents = build_chunks(documents)
-
-    if not chunked_documents:
-        st.error("The PDF could not be divided into searchable text chunks.")
-        st.stop()
-
     texts = tuple(item["text"] for item in chunked_documents)
     index = build_faiss_index(texts)
-
 except Exception as e:
-    st.error(f"Could not process the PDF: {e}")
+    st.error(f"Error loading internal legal document: {e}")
     st.stop()
 
 
-st.success(
-    f"Loaded **{len(documents)} pages** and created **{len(chunked_documents)} searchable chunks**."
-)
+# Example Questions Section
+st.markdown("### 💡 Example Questions")
+st.caption("Click a button below to quickly run a sample query:")
 
+example_questions = [
+    "What does the law say about cyber stalking?",
+    "What is the punishment for cyberbullying?",
+    "What does the law say about online threats?",
+    "What is electronic fraud according to PECA?",
+    "What evidence should I preserve in case of cybercrime?",
+]
 
-# =========================================================
-# Chat
-# =========================================================
+col1, col2 = st.columns(2)
+selected_example = None
+
+for i, eq in enumerate(example_questions):
+    col = col1 if i % 2 == 0 else col2
+    if col.button(eq, use_container_width=True):
+        selected_example = eq
+
+st.divider()
+
+# Message State Initialization
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-
+# Display prior chat messages
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -474,44 +390,34 @@ for message in st.session_state.messages:
                         f"(similarity: {source['similarity']:.3f})"
                     )
 
+# Manual Question Input
+manual_question = st.chat_input("Ask a question about cyber-law or online safety...")
 
-question = st.chat_input(
-    "Describe your cyber-safety or cyber-law question..."
-)
+# Handle input priority (either example button clicked or manually submitted)
+question = selected_example or manual_question
 
 if question:
-    st.session_state.messages.append(
-        {
-            "role": "user",
-            "content": question,
-        }
-    )
+    st.session_state.messages.append({"role": "user", "content": question})
 
     with st.chat_message("user"):
         st.markdown(question)
 
     with st.chat_message("assistant"):
-
         if not is_cyber_question(question):
             answer = OUT_OF_SCOPE_RESPONSE
             sources = []
-
         else:
             sources = retrieve_documents(
                 question,
                 chunked_documents,
                 index,
-                top_k=top_k,
-                min_similarity=min_similarity,
+                top_k=5,
+                min_similarity=0.30,
             )
 
             answer = generate_answer(
                 question,
                 sources,
-                technicality,
-                response_size,
-                model_name,
-                temperature,
             )
 
         st.markdown(answer)
@@ -531,30 +437,3 @@ if question:
             "sources": sources,
         }
     )
-
-
-with st.expander("ℹ️ How CyberShield AI works"):
-    st.markdown(
-        """
-        **1. Upload PDF** → your selected cyber-law document is read page by page.
-
-        **2. Chunking** → the text is divided into smaller searchable sections.
-
-        **3. Embeddings** → Sentence Transformers converts the sections into vectors.
-
-        **4. FAISS retrieval** → the most relevant sections are retrieved for the question.
-
-        **5. Grounded generation** → Groq generates an answer using the retrieved context.
-
-        **6. Source display** → relevant document pages are shown with the answer.
-
-        The application is designed to reduce unsupported legal claims by refusing to
-        answer legal questions when relevant information is not found in the uploaded
-        document.
-        """
-    )
-
-st.caption(
-    "⚠️ CyberShield AI provides informational cyber-safety/legal information and is "
-    "not a substitute for advice from a qualified lawyer or relevant authority."
-)
