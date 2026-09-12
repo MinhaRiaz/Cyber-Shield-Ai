@@ -1,8 +1,8 @@
-# 🛡️ CyberShield & Legal AI
+# 🛡️ CyberShield AI
 
 ### Grounded Cyber-Safety, Cyberbullying & Criminal Law Assistant for Pakistan
 
-**CyberShield & Legal AI** is an AI-powered Retrieval-Augmented Generation (RAG) application designed to provide accessible, grounded information about **cyber safety, cybercrime, online harassment, and criminal offences under Pakistani law**.
+**CyberShield AI** is an AI-powered Retrieval-Augmented Generation (RAG) application designed to provide accessible, grounded information about **cyber safety, cybercrime, online harassment, and criminal offences under Pakistani law**.
 
 The application uses **PECA 2016** and the **Pakistan Penal Code (PPC) 1860** as its internal legal knowledge base. Relevant sections are retrieved using semantic search and provided to an AI model before generating a response.
 
