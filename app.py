@@ -636,10 +636,13 @@ if question:
         st.markdown(question)
 
     with st.chat_message("assistant"):
+        # Check if question is valid legal or cyber question
         if not is_legal_or_cyber_question(question):
-            answer = OUT_OF_SCOPE_RESPONSE + FOOTER_INFO
+            # ❌ GHALT SAWAL: Sirf Out-of-Scope message dikhayen (FOOTER_INFO nahi add hoga)
+            answer = OUT_OF_SCOPE_RESPONSE
             sources = []
         else:
+            # ✅ SAHI SAWAL: Legal search karein aur end mein Emergency Footer add karein
             sources = retrieve_documents(
                 question,
                 chunked_documents,
@@ -653,6 +656,7 @@ if question:
                 sources,
                 response_format=response_format
             )
+            # Yahan sahi sawal par emergency info attach hogi
             answer = raw_answer + FOOTER_INFO
 
         st.markdown(answer, unsafe_allow_html=True)
