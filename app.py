@@ -160,10 +160,21 @@ st.markdown("""
         border-radius: 8px;
         margin-top: 20px;
         border: 1px solid #1e293b;
+        color: #ffffff !important; /* 👈 Card ke andar tamam text white ho jayega */
     }
-    hr {
-        margin: 1.5rem 0;
-        border-color: #334155;
+    .emergency-card h4 {
+        color: #ffffff !important; /* 👈 Heading 🚨 Immediate Reporting ka color white */
+        margin-bottom: 10px;
+    }
+    .emergency-card ul {
+        color: #ffffff !important; /* 👈 Bullet points ka text white */
+    }
+    .emergency-card li {
+        color: #ffffff !important;
+    }
+    .emergency-card a {
+        color: #38bdf8 !important; /* 👈 Portal link readable cyan color mein najar ayega */
+        text-decoration: underline;
     }
     </style>
 """, unsafe_allow_html=True)
