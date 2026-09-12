@@ -1,5 +1,6 @@
 import os
 import re
+import base64
 from typing import List, Dict, Tuple
 
 import faiss
@@ -8,6 +9,89 @@ import streamlit as st
 from groq import Groq
 from sentence_transformers import SentenceTransformer
 import fitz  # PyMuPDF
+
+
+# =========================================================
+# Logo Vector SVG (Embedded Inline)
+# =========================================================
+CYBERSHIELD_SVG_LOGO = """
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#0284c7" />
+      <stop offset="100%" stop-color="#0369a1" />
+    </linearGradient>
+
+    <filter id="cyanGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <pattern id="circuit" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 10 0 L 10 20 L 20 20" fill="none" stroke="#1e3a8a" stroke-width="1.5" opacity="0.4"/>
+      <circle cx="20" cy="20" r="2" fill="#1e3a8a" opacity="0.6"/>
+    </pattern>
+  </defs>
+
+  <rect width="500" height="500" rx="40" fill="url(#bgGrad)"/>
+  <rect width="500" height="500" rx="40" fill="url(#circuit)"/>
+
+  <path d="M 250 70 
+           C 340 70, 390 90, 410 130 
+           C 410 250, 360 360, 250 430 
+           C 140 360, 90 250, 90 130 
+           C 110 90, 160 70, 250 70 Z" 
+        fill="none" 
+        stroke="#38bdf8" 
+        stroke-width="5" 
+        filter="url(#cyanGlow)"
+        opacity="0.8"/>
+
+  <path d="M 250 85 
+           C 330 85, 375 102, 392 138 
+           C 392 242, 347 342, 250 408 
+           C 153 342, 108 242, 108 138 
+           C 125 102, 170 85, 250 85 Z" 
+        fill="url(#shieldGrad)" 
+        stroke="#0284c7" 
+        stroke-width="3"/>
+
+  <path d="M 250 105 
+           C 315 105, 355 120, 370 150 
+           C 370 230, 330 315, 250 375 
+           C 170 315, 130 230, 130 150 
+           C 145 120, 185 105, 250 105 Z" 
+        fill="none" 
+        stroke="#7dd3fc" 
+        stroke-width="2" 
+        opacity="0.5"/>
+
+  <path d="M 250 170 L 250 320" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
+  <path d="M 210 320 L 290 320" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
+  <path d="M 170 200 L 330 200" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  <path d="M 170 200 L 140 250 L 200 250 Z" fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M 330 200 L 300 250 L 360 250 Z" fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+
+  <circle cx="250" cy="200" r="22" fill="#0f172a" stroke="#ffffff" stroke-width="4"/>
+  <circle cx="250" cy="200" r="8" fill="#38bdf8"/>
+
+  <circle cx="170" cy="200" r="5" fill="#38bdf8"/>
+  <circle cx="330" cy="200" r="5" fill="#38bdf8"/>
+  <line x1="250" y1="140" x2="250" y2="170" stroke="#38bdf8" stroke-width="3" stroke-dasharray="3 3"/>
+  <circle cx="250" cy="135" r="4" fill="#38bdf8"/>
+</svg>
+"""
+
+# Helper to render SVG string as base64 image tag for Streamlit HTML
+def render_svg_as_html(svg_string: str, width: int = 60) -> str:
+    b64 = base64.b64encode(svg_string.encode('utf-8')).decode('utf-8')
+    return f'<img src="data:image/svg+xml;base64,{b64}" width="{width}px" style="vertical-align: middle;" />'
 
 
 # =========================================================
@@ -20,7 +104,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for Modern UI/UX Styling
+# Custom CSS for UI/UX Styling
 st.markdown("""
     <style>
     .main {
@@ -34,11 +118,17 @@ st.markdown("""
         margin-bottom: 20px;
         border: 1px solid #334155;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+    .header-text {
+        flex-grow: 1;
     }
     .header-title {
         font-size: 2.2rem;
         font-weight: 700;
-        margin-bottom: 8px;
+        margin-bottom: 4px;
         color: #38bdf8;
     }
     .header-subtitle {
@@ -53,15 +143,15 @@ st.markdown("""
         font-size: 0.82rem;
         font-weight: 600;
         margin-right: 8px;
+        margin-top: 10px;
         background-color: #0284c7;
         color: white;
     }
-    .topic-card {
-        background-color: #1e293b;
-        border-radius: 8px;
-        padding: 12px 16px;
+    .sidebar-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
         margin-bottom: 10px;
-        border: 1px solid #334155;
     }
     .emergency-card {
         background-color: #0f172a;
@@ -122,7 +212,6 @@ LEGAL_KEYWORDS = {
     "punishment", "imprisonment", "fine", "law", "legal", "offence"
 }
 
-# Categorized list of supported issues to display to users
 SUPPORTED_CATEGORIES = {
     "📱 Digital Harassment & Cyberstalking": [
         "Cyber stalking (repeating unwanted contact online) — PECA Sec 24",
@@ -408,12 +497,22 @@ def generate_answer(
 
 
 # =========================================================
-# Sidebar UI
+# Sidebar UI (Featuring Inline SVG Logo)
 # =========================================================
 with st.sidebar:
-    st.image("https://img.icons8.com/color/96/000000/shield.png", width=70)
-    st.title("CyberShield AI")
-    st.caption("Version 2.0 • PECA & PPC Assistant")
+    # Sidebar Header with SVG Logo
+    st.markdown(
+        f"""
+        <div class="sidebar-header">
+            {render_svg_as_html(CYBERSHIELD_SVG_LOGO, width=48)}
+            <div>
+                <h2 style="margin: 0; font-size: 1.4rem; color: #38bdf8;">CyberShield AI</h2>
+                <span style="font-size: 0.8rem; color: #94a3b8;">v2.0 • RAG Assistant</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
     
     st.markdown("---")
     st.subheader("⚙️ Response Style")
@@ -434,19 +533,27 @@ with st.sidebar:
 
 
 # =========================================================
-# Main UI & Header Banner
+# Main UI & Header Banner (Featuring Inline SVG Logo)
 # =========================================================
-st.markdown("""
-<div class="header-card">
-    <div class="header-title">🛡️ CyberShield & Legal AI</div>
-    <div class="header-subtitle">Grounded Cyber-Safety, Cyberbullying & Criminal Law Assistant for Pakistan</div>
-    <div style="margin-top: 15px;">
-        <span class="badge">PECA 2016 Indexed</span>
-        <span class="badge">PPC 1860 Indexed</span>
-        <span class="badge">Groq LPUs Active</span>
+st.markdown(
+    f"""
+    <div class="header-card">
+        <div>
+            {render_svg_as_html(CYBERSHIELD_SVG_LOGO, width=85)}
+        </div>
+        <div class="header-text">
+            <div class="header-title">CyberShield & Legal AI</div>
+            <div class="header-subtitle">Grounded Cyber-Safety, Cyberbullying & Criminal Law Assistant for Pakistan</div>
+            <div>
+                <span class="badge">PECA 2016 Indexed</span>
+                <span class="badge">PPC 1860 Indexed</span>
+                <span class="badge">Groq LPUs Active</span>
+            </div>
+        </div>
     </div>
-</div>
-""", unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True
+)
 
 # Load legal documents
 try:
